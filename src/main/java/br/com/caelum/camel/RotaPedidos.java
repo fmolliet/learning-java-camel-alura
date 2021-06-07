@@ -1,5 +1,6 @@
 package br.com.caelum.camel;
 
+import org.apache.activemq.camel.component.ActiveMQComponent;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
@@ -12,6 +13,9 @@ public class RotaPedidos {
 	public static void main(String[] args) throws Exception {
 
 		CamelContext context = new DefaultCamelContext();
+		// Para usar o Activemq precisamos adicionar um componente
+		context.addComponent("activemq", ActiveMQComponent.activeMQComponent("tcp://localhost:61616"));
+		
 		
 		context.addRoutes(new RouteBuilder() {
 			
@@ -20,7 +24,7 @@ public class RotaPedidos {
 			public void configure() throws Exception {
 				
 				// Tira a mensagem venenosa e trata os erros
-				errorHandler(deadLetterChannel("file:erro") // é um Error Handler que pode ser personalizado
+				errorHandler(deadLetterChannel("activemq:queue:pedidos.DLQ") // vamos tirar "file:erro" para mudar para Activemq  // é um Error Handler que pode ser personalizado
 						.logExhaustedMessageHistory(true)
 						.maximumRedeliveries(3) // Maximo de redelivery
 						.maximumRedeliveryDelay(2000)
@@ -37,14 +41,13 @@ public class RotaPedidos {
 						);
 				
 				// Utilizamos subrotas
-				from("file:pedidos?delay=5s&noop=true")
+				from("activemq:queue:pedidos") // tiramos file:pedidos?delay=5s&noop=true
 					.routeId("rota-pedidos")  // Melhora legibilidade indicando o nome
 					// Usaremos o XSD para validar os dados que chegaram //  O XSD (XML Schema Definition) ou simples Schema define a estrutura e tipos de um XML.
-					.to("validator:pedido.xsd"); // validamos a entrada de dados  //
-				
-					//.multicast()  // O método multicast() permite que a mesma mensagem seja enviada para vários endpoints.
-						//.to("direct:http") // Separa as subrotas direct
-						//.to("direct:soap"); // Em vez de direct conseguimos usar seda que faz de maneira assincrona (Staged event-driven architecture)
+					.to("validator:pedido.xsd") // validamos a entrada de dados  //
+					.multicast()  // O método multicast() permite que a mesma mensagem seja enviada para vários endpoints.
+						.to("direct:http") // Separa as subrotas direct
+						.to("direct:soap"); // Em vez de direct conseguimos usar seda que faz de maneira assincrona (Staged event-driven architecture)
 				
 				
 				from("direct:http")
