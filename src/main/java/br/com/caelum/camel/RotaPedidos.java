@@ -2,6 +2,7 @@ package br.com.caelum.camel;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
+import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.http4.HttpMethods;
 import org.apache.camel.impl.DefaultCamelContext;
@@ -18,12 +19,32 @@ public class RotaPedidos {
 			@Override
 			public void configure() throws Exception {
 				
+				// Tira a mensagem venenosa e trata os erros
+				errorHandler(deadLetterChannel("file:erro") // é um Error Handler que pode ser personalizado
+						.logExhaustedMessageHistory(true)
+						.maximumRedeliveries(3) // Maximo de redelivery
+						.maximumRedeliveryDelay(2000)
+						.onRedelivery( new Processor() {
+
+							@Override
+							public void process(Exchange exchange) throws Exception {
+								int counter = (int) exchange.getIn().getHeader(Exchange.REDELIVERY_COUNTER);
+				                int max = (int) exchange.getIn().getHeader(Exchange.REDELIVERY_MAX_COUNTER);
+				                System.out.println("Redelivery - " + counter + "/" + max );
+							}
+							
+						})
+						);
+				
 				// Utilizamos subrotas
 				from("file:pedidos?delay=5s&noop=true")
 					.routeId("rota-pedidos")  // Melhora legibilidade indicando o nome
-					.multicast()  // O método multicast() permite que a mesma mensagem seja enviada para vários endpoints.
-						.to("direct:http") // Separa as subrotas direct
-						.to("direct:soap"); // Em vez de direct conseguimos usar seda que faz de maneira assincrona (Staged event-driven architecture)
+					// Usaremos o XSD para validar os dados que chegaram //  O XSD (XML Schema Definition) ou simples Schema define a estrutura e tipos de um XML.
+					.to("validator:pedido.xsd"); // validamos a entrada de dados  //
+				
+					//.multicast()  // O método multicast() permite que a mesma mensagem seja enviada para vários endpoints.
+						//.to("direct:http") // Separa as subrotas direct
+						//.to("direct:soap"); // Em vez de direct conseguimos usar seda que faz de maneira assincrona (Staged event-driven architecture)
 				
 				
 				from("direct:http")
